@@ -1,12 +1,31 @@
 import os
 import asyncio
+import threading
 import requests
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# আপনার নতুন বটের টোকেন ও ফায়ারবেস প্রজেক্ট আইডি
+# আপনার বটের টোকেন ও ফায়ারবেস প্রজেক্ট আইডি
 BOT_TOKEN = "8981396014:AAE9EnLaZDrYPjcoSPMsIlk_7IyStmoU0JM"
 FIREBASE_PROJECT_ID = "xtube-6ea1d"
+
+# Render Web Service Port Health-Check
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"Trend VideoTube Bot is 100% Live and Running!")
+
+    def log_message(self, format, *args):
+        return  # স্ট্যাক লগ বন্ধ রাখা
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    print(f"🌐 Health check server listening on port {port}")
+    server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -21,7 +40,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     video_code = args[0] # e.g. vid_101
 
-    # ফায়ারবেস থেকে লাইভ ফাইল আইডি আনা
+    # ফায়ারবেস থেকে লাইভ ফাইল আইডি ও টাইটেল ডাটা টেনে আনা
     firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{video_code}"
     
     try:
@@ -35,14 +54,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title = fields.get('title', {}).get('stringValue', 'Exclusive Video')
 
             if file_id:
-                # ১. ভিডিও পাঠানো
+                # ১. ভিডিও ইনবক্সে সেন্ড করা
                 sent_video = await context.bot.send_video(
                     chat_id=chat_id, 
                     video=file_id, 
                     caption=f"🎥 {title}\n📌 Uploaded for Trend VideoTube Pro"
                 )
 
-                # ২. নোটিশ পাঠানো
+                # ২. নোটিশ মেসেজ
                 sent_msg = await context.bot.send_message(
                     chat_id=chat_id, 
                     text="✅ Video Unlocked Successfully!\n\n⚠️ It will auto delete in 5 minutes."
@@ -71,7 +90,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=chat_id, text="❌ কোনো একটি সমস্যা হয়েছে। আবার চেষ্টা করুন।")
 
 if __name__ == '__main__':
-    print("🤖 New Bot is starting on Render...")
+    # ব্যাকগ্রাউন্ডে হেলথ-চেক ওয়েব সার্ভার স্টার্ট
+    threading.Thread(target=run_health_server, daemon=True).start()
+
+    print("🤖 Bot is starting on Render Free Web Service...")
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.run_polling()
