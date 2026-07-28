@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8981396014:AAE9EnLaZDrYPjcoSPMsIlk_7IyStmoU0JM"
+BOT_TOKEN = "8981396014:AAEPA0yH7j1Lop58LcTd0KgF3I9Br1t8xVo"
 FIREBASE_PROJECT_ID = "xtube-6ea1d"
 
 # আপনার অফিশিয়াল চ্যানেলের ইউজারনেম বা আইডি (e.g. @XTubeearn_bot)
