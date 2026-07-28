@@ -10,7 +10,11 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 BOT_TOKEN = "8981396014:AAE9EnLaZDrYPjcoSPMsIlk_7IyStmoU0JM"
 FIREBASE_PROJECT_ID = "xtube-6ea1d"
 
-# 1. RENDER WEB SERVICE HEALTH-CHECK SERVER (Runs on background thread)
+# আপনার টেলিগ্রাম অফিশিয়াল চ্যানেলের ইউজারনেম (e.g. @your_channel)
+CHANNEL_USERNAME = "@XTubeearn_bot"  # আপনার চ্যানেলের ইউজারনেম বা আইডি বসান
+MINI_APP_URL = "https://yourname.blogspot.com" # আপনার ব্লগারের মিনি অ্যাপ ইউআরএল
+
+# 1. RENDER WEB SERVICE HEALTH-CHECK SERVER
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -19,7 +23,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"XTube Earn Telegram Bot is 100% Active & Healthy!")
 
     def log_message(self, format, *args):
-        return # Disable console HTTP logs
+        return
 
 def run_health_server():
     port = int(os.environ.get("PORT", 8080))
@@ -32,24 +36,24 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     args = context.args
 
-    # A. Normal /start command (No video code)
+    # A. Normal /start Command
     if not args:
         welcome_msg = (
             "👋 **স্বাগতম XTube Earn বটের মধ্যে!**\n\n"
             "🎬 আমাদের মিনি অ্যাপ থেকে প্রতিদিন ভিডিও দেখে এবং টাস্ক পূরণ করে ইনকাম করুন!\n\n"
             "👇 অ্যাপে প্রবেশ করতে নিচের বাটনে ক্লিক করুন:"
         )
+        keyboard = [[InlineKeyboardButton("🚀 Open App", web_app={"url": MINI_APP_URL})]]
         await context.bot.send_message(
             chat_id=chat_id, 
             text=welcome_msg, 
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # B. Deep Link /start vid_101 (Unlocked Video Request)
-    video_code = args[0] # e.g. vid_101
-    
-    # Query Firebase Firestore REST API for video document
+    # B. Unlocked Video / Deep Link Request (/start vid_101)
+    video_code = args[0]
     firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{video_code}"
 
     try:
@@ -63,7 +67,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title = fields.get('title', {}).get('stringValue', 'Exclusive Video')
 
             if file_id:
-                # 1. Send Unlocked Video
+                # ১. ভিডিও সেন্ড করা
                 sent_video = await context.bot.send_video(
                     chat_id=chat_id, 
                     video=file_id, 
@@ -71,14 +75,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
 
-                # 2. Send Expiration Notice Message
+                # ২. ৫ মিনিটের টাইমার নোটিশ
                 sent_msg = await context.bot.send_message(
                     chat_id=chat_id, 
                     text="✅ **Video Unlocked Successfully!**\n\n⚠️ **Note:** This video will automatically delete in **5 minutes** for security reasons.",
                     parse_mode="Markdown"
                 )
 
-                # 3. Schedule 5 Minutes Auto-Delete (300 seconds)
+                # ৩. ঠিক ৫ মিনিট (৩০০ সেকেন্ড) পর অটো ডিলিট
                 await asyncio.sleep(300)
                 
                 try:
@@ -94,31 +98,98 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await context.bot.send_message(chat_id=chat_id, text="❌ ভিডিও ফাইল আইডি পাওয়া যায়নি।")
         else:
-            await context.bot.send_message(chat_id=chat_id, text="❌ ভিডিওটি ডিলিট হয়ে গেছে বা পাওয়া যায়নি।")
+            await context.bot.send_message(chat_id=chat_id, text="❌ ভিডিওটি পাওয়া যায়নি।")
 
     except Exception as e:
         print(f"Error in start command: {e}")
-        await context.bot.send_message(chat_id=chat_id, text="❌ কোনো সমস্যা হয়েছে। আবার চেষ্টা করুন।")
 
-# 3. EASY FILE ID GENERATOR (When Admin sends or forwards any video to bot)
+# 3. AUTO FILE ID GENERATOR FOR ADMIN
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.video:
         file_id = update.message.video.file_id
         msg_text = (
             f"📹 **Video File ID Generated:**\n\n"
             f"`{file_id}`\n\n"
-            f"👆 উপর থেকে File ID টি কপি করে আপনার এডমিন প্যানেলে পেস্ট করুন!"
+            f"👆 উপর থেকে File ID টি কপি করে এডমিন প্যানেলে পেস্ট করুন!"
         )
         await update.message.reply_text(text=msg_text, parse_mode="Markdown")
 
-if __name__ == '__main__':
-    # Start Port 8080 HTTP Health Server for Render Free Tier
-    threading.Thread(target=run_health_server, daemon=True).start()
+# 4. BACKGROUND TASK: AUTO BROADCAST NEW VIDEOS & PAYOUTS TO CHANNEL
+async def auto_channel_broadcaster(app: Application):
+    while True:
+        try:
+            # A. Check Unbroadcasted Videos
+            vids_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos"
+            res = requests.get(vids_url)
+            if res.status_code == 200:
+                docs = res.json().get('documents', [])
+                for doc in docs:
+                    fields = doc.get('fields', {})
+                    vid_code = doc['name'].split('/')[-1]
+                    is_sent = fields.get('channelBroadcasted', {}).get('booleanValue', False)
+                    title = fields.get('title', {}).get('stringValue', 'New Video')
+                    img_url = fields.get('imgUrl', {}).get('stringValue', '')
 
-    print("🤖 XTube Earn Bot is starting...")
-    app = Application.builder().token(BOT_TOKEN).build()
+                    if not is_sent and CHANNEL_USERNAME != "@your_channel_username":
+                        post_text = (
+                            f"🎁 **Dear friends, don't miss the video! / Watch Now!**\n\n"
+                            f"📌 **Title:** {title}\n\n"
+                            f"💸 **Watch the video and earn a lot!**"
+                        )
+                        btn_url = f"https://t.me/XTubeearn_bot/app?startapp={vid_code}"
+                        keyboard = [[InlineKeyboardButton("🚀 Unlock full videos", url=btn_url)]]
+
+                        if img_url:
+                            await app.bot.send_photo(chat_id=CHANNEL_USERNAME, photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+                        else:
+                            await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=post_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+                        # Mark as broadcasted in Firestore
+                        update_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{vid_code}?updateMask.fieldPaths=channelBroadcasted"
+                        requests.patch(update_url, json={"fields": {"channelBroadcasted": {"booleanValue": True}}})
+
+            # B. Check Unbroadcasted Successful Payments
+            payouts_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawals"
+            res_p = requests.get(payouts_url)
+            if res_p.status_code == 200:
+                docs_p = res_p.json().get('documents', [])
+                for doc in docs_p:
+                    fields = doc.get('fields', {})
+                    tx_id = doc['name'].split('/')[-1]
+                    status = fields.get('status', {}).get('stringValue', '')
+                    is_sent = fields.get('channelBroadcasted', {}).get('booleanValue', False)
+                    username = fields.get('username', {}).get('stringValue', 'user')
+                    amount = fields.get('amount', {}).get('stringValue', '100.00')
+                    method = fields.get('method', {}).get('stringValue', 'UPI')
+
+                    if status == "Success" and not is_sent and CHANNEL_USERNAME != "@your_channel_username":
+                        payout_text = (
+                            f"💸 **New Payment Received!**\n\n"
+                            f"👤 **User:** {username}\n"
+                            f"💰 **Amount:** ₹{amount}\n"
+                            f"🏦 **Method:** {method}\n\n"
+                            f"🔥 If @{username} can earn this much daily, why are you waiting? Start watching videos and get paid today!"
+                        )
+                        keyboard = [[InlineKeyboardButton("🚀 Start Earning Now", web_app={"url": MINI_APP_URL})]]
+                        await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=payout_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+                        # Mark as broadcasted
+                        update_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawals/{tx_id}?updateMask.fieldPaths=channelBroadcasted"
+                        requests.patch(update_url, json={"fields": {"channelBroadcasted": {"booleanValue": True}}})
+
+        except Exception as err:
+            print("Broadcaster Loop Error:", err)
+
+        await asyncio.sleep(20) # Check every 20 seconds
+
+async def post_init(app: Application):
+    asyncio.create_task(auto_channel_broadcaster(app))
+
+if __name__ == '__main__':
+    threading.Thread(target=run_health_server, daemon=True).start()
+    print("🤖 XTube Earn Bot is running with Auto-Broadcaster...")
     
-    # Handlers
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.VIDEO, handle_video_file))
     
