@@ -11,9 +11,9 @@ BOT_TOKEN = "8981396014:AAH6rZIjb1SksDyJyR4h_BYflQBMtvXO_MI"
 FIREBASE_PROJECT_ID = "xtube-6ea1d"
 
 CHANNEL_USERNAME = "@XTubeearn_bot"
-MINI_APP_URL = "https://yourname.blogspot.com"
+MINI_APP_URL = "https://yourname.blogspot.com" # এখানে আপনার ব্লগারের আসল লিংক বসান
 
-# 1. RENDER WEB SERVICE HEALTH-CHECK SERVER
+# 1. RENDER WEB SERVICE HEALTH-CHECK SERVER (SUPPORTING GET & HEAD FOR UPTIMEROBOT)
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -21,8 +21,13 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"XTube Earn Telegram Bot is 100% Active & Healthy!")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+
     def log_message(self, format, *args):
-        return
+        return  # Disable log spamming
 
 def run_health_server():
     port = int(os.environ.get("PORT", 8080))
@@ -176,15 +181,13 @@ async def post_init(app: Application):
     asyncio.create_task(auto_channel_broadcaster(app))
 
 if __name__ == '__main__':
-    # ১. পুরোনো কোনো ঝুলন্ত কানেকশন বা ওয়েবহুক থাকলে অটোম্যাটিক ডিলিট করা
     try:
         delete_url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
         requests.get(delete_url, timeout=5)
-        print("🧹 Cleared old webhooks & ghost connections successfully!")
+        print("🧹 Cleared old webhooks successfully!")
     except Exception as e:
         print("Webhook clear note:", e)
 
-    # ২. রেন্ডার পোর্ট ৮০৮০ হেলথ-চেক সার্ভার স্টার্ট
     threading.Thread(target=run_health_server, daemon=True).start()
 
     print("🤖 XTube Earn Bot is running...")
@@ -193,5 +196,4 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.VIDEO, handle_video_file))
     
-    # ৩. drop_pending_updates=True দিয়ে নতুন কানেকশন স্টার্ট
     app.run_polling(drop_pending_updates=True)
