@@ -11,7 +11,7 @@ BOT_TOKEN = "8981396014:AAHnJKYp1i2sdM-xkHmKzidtQ5IBm3TwakQ"
 FIREBASE_PROJECT_ID = "xtube-6ea1d"
 
 CHANNEL_USERNAME = "@XTubeearn_bot"
-MINI_APP_URL = "https://yourname.blogspot.com" # এখানে আপনার ব্লগারের আসল লিংক বসান
+MINI_APP_URL = "https://xtubeearn.blogspot.com" # এখানে আপনার ব্লগারের আসল লিংক বসান
 
 # 1. RENDER WEB SERVICE HEALTH-CHECK SERVER (SUPPORTING GET & HEAD FOR UPTIMEROBOT)
 class HealthCheckHandler(BaseHTTPRequestHandler):
