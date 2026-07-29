@@ -7,14 +7,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8981396014:AAEPA0yH7j1Lop58LcTd0KgF3I9Br1t8xVo"
+BOT_TOKEN = "8981396014:AAFU9Jo5YQo01mek8ZURFTC_1khyRVsu7zI"
 FIREBASE_PROJECT_ID = "xtube-6ea1d"
 
-# আপনার অফিশিয়াল চ্যানেলের ইউজারনেম বা আইডি (e.g. @XTubeearn_bot)
 CHANNEL_USERNAME = "@XTubeearn_bot"
-MINI_APP_URL = "https://yourname.blogspot.com" # আপনার ব্লগারের মিনি অ্যাপ ইউআরএল
+MINI_APP_URL = "https://yourname.blogspot.com"
 
-# 1. RENDER WEB SERVICE HEALTH-CHECK SERVER (Runs on background thread)
+# 1. RENDER WEB SERVICE HEALTH-CHECK SERVER
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -23,7 +22,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"XTube Earn Telegram Bot is 100% Active & Healthy!")
 
     def log_message(self, format, *args):
-        return # Disable HTTP console log spam
+        return
 
 def run_health_server():
     port = int(os.environ.get("PORT", 8080))
@@ -36,7 +35,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     args = context.args
 
-    # A. Normal /start command
     if not args:
         welcome_msg = (
             "👋 **স্বাগতম XTube Earn বটের মধ্যে!**\n\n"
@@ -52,8 +50,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # B. Unlocked Video Deep Link Request (/start vid_101)
-    video_code = args[0]
+    video_code = args[0] # e.g. vid_101
     firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{video_code}"
 
     try:
@@ -67,7 +64,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title = fields.get('title', {}).get('stringValue', 'Exclusive Video')
 
             if file_id:
-                # ১. ইনবক্সে ভিডিও সেন্ড করা
                 sent_video = await context.bot.send_video(
                     chat_id=chat_id, 
                     video=file_id, 
@@ -75,14 +71,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
 
-                # ২. ৫ মিনিটের টাইমার নোটিশ পাঠানো
                 sent_msg = await context.bot.send_message(
                     chat_id=chat_id, 
                     text="✅ **Video Unlocked Successfully!**\n\n⚠️ **Note:** This video will automatically delete in **5 minutes** for security reasons.",
                     parse_mode="Markdown"
                 )
 
-                # ৩. ঠিক ৫ মিনিট (৩০০ সেকেন্ড) পর অটো ডিলিট করা
                 await asyncio.sleep(300)
                 
                 try:
@@ -90,10 +84,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.delete_message(chat_id=chat_id, message_id=sent_msg.message_id)
                     await context.bot.send_message(
                         chat_id=chat_id, 
-                        text="🗑️ ৫ মিনিট সময় পার হয়ে যাওয়ায় নিরাপত্তা স্বার্থে ভিডিওটি অটো-ডিলিট করা হলো।"
+                        text="🗑️ ৫ মিনিট পার হয়ে যাওয়ায় নিরাপত্তা স্বার্থে ভিডিওটি অটো-ডিলিট করা হলো।"
                     )
                 except Exception as del_err:
-                    print(f"Auto-delete error: {del_err}")
+                    print(f"Auto-delete failed: {del_err}")
 
             else:
                 await context.bot.send_message(chat_id=chat_id, text="❌ ভিডিও ফাইল আইডি পাওয়া যায়নি।")
@@ -114,11 +108,10 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(text=msg_text, parse_mode="Markdown")
 
-# 4. BACKGROUND TASK: AUTO BROADCAST NEW VIDEOS & PAYOUTS TO TELEGRAM CHANNEL
+# 4. BACKGROUND TASK: AUTO BROADCAST NEW VIDEOS & PAYOUTS
 async def auto_channel_broadcaster(app: Application):
     while True:
         try:
-            # A. Check Unbroadcasted Videos
             vids_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos"
             res = requests.get(vids_url)
             if res.status_code == 200:
@@ -144,11 +137,9 @@ async def auto_channel_broadcaster(app: Application):
                         else:
                             await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=post_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-                        # Update Firestore status
                         update_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{vid_code}?updateMask.fieldPaths=channelBroadcasted"
                         requests.patch(update_url, json={"fields": {"channelBroadcasted": {"booleanValue": True}}})
 
-            # B. Check Unbroadcasted Successful Payments
             payouts_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawals"
             res_p = requests.get(payouts_url)
             if res_p.status_code == 200:
@@ -173,7 +164,6 @@ async def auto_channel_broadcaster(app: Application):
                         keyboard = [[InlineKeyboardButton("🚀 Start Earning Now", web_app={"url": MINI_APP_URL})]]
                         await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=payout_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-                        # Update Firestore status
                         update_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawals/{tx_id}?updateMask.fieldPaths=channelBroadcasted"
                         requests.patch(update_url, json={"fields": {"channelBroadcasted": {"booleanValue": True}}})
 
@@ -186,13 +176,22 @@ async def post_init(app: Application):
     asyncio.create_task(auto_channel_broadcaster(app))
 
 if __name__ == '__main__':
-    # Start Port 8080 HTTP Health-Check Server for Render Free Tier
+    # ১. পুরোনো কোনো ঝুলন্ত কানেকশন বা ওয়েবহুক থাকলে অটোম্যাটিক ডিলিট করা
+    try:
+        delete_url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
+        requests.get(delete_url, timeout=5)
+        print("🧹 Cleared old webhooks & ghost connections successfully!")
+    except Exception as e:
+        print("Webhook clear note:", e)
+
+    # ২. রেন্ডার পোর্ট ৮০৮০ হেলথ-চেক সার্ভার স্টার্ট
     threading.Thread(target=run_health_server, daemon=True).start()
 
-    print("🤖 XTube Earn Bot is running with Auto-Broadcaster...")
+    print("🤖 XTube Earn Bot is running...")
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.VIDEO, handle_video_file))
     
-    app.run_polling()
+    # ৩. drop_pending_updates=True দিয়ে নতুন কানেকশন স্টার্ট
+    app.run_polling(drop_pending_updates=True)
