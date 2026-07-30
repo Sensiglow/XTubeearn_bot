@@ -51,6 +51,7 @@ def process_firestore_referral(new_user, referrer_id):
                     "dailyAdCount": {"integerValue": 0},
                     "referredBy": {"stringValue": str(referrer_id) if referrer_id else ""},
                     "isActive": {"booleanValue": False},
+                    "hasJoinedChannel": {"booleanValue": False},
                     "pendingReferBonus": {"doubleValue": 0.00},
                     "totalJoined": {"integerValue": 0},
                     "activeCount": {"integerValue": 0},
@@ -195,12 +196,12 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(text=msg_text, parse_mode="Markdown")
 
-# 4. INSTANT AUTO-BROADCASTER FOR NEW VIDEOS & SUCCESSFUL PAYOUTS
-async def auto_channel_broadcaster(app: Application):
+# 4. INSTANT AUTO-BROADCASTER TO ALL BOT USERS & CHANNEL
+async def auto_bot_broadcaster(app: Application):
     while True:
         try:
             # -------------------------------------------------------------
-            # A. Check Unbroadcasted New Videos (Auto-broadcast)
+            # A. Broadcast New Videos to All Bot Users & Channel
             # -------------------------------------------------------------
             vids_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos"
             res_v = requests.get(vids_url)
@@ -212,46 +213,54 @@ async def auto_channel_broadcaster(app: Application):
                     vid_code = doc['name'].split('/')[-1]
                     is_sent = fields.get('channelBroadcasted', {}).get('booleanValue', False)
                     title = fields.get('title', {}).get('stringValue', 'New Video')
-                    
-                    # Check imgUrl or thumbnailUrl
                     img_url = fields.get('imgUrl', {}).get('stringValue', fields.get('thumbnailUrl', {}).get('stringValue', ''))
 
                     if not is_sent:
+                        # Prepare post content
                         post_text = (
                             f"🎁 **Dear friends, don't miss the video! / Watch Now!**\n\n"
                             f"📌 **Title:** {title}\n\n"
                             f"💸 **Watch the video and earn a lot!**"
                         )
-                        # Mini App Deep Link button that opens the exact video
                         btn_url = f"https://t.me/{BOT_USERNAME}/{MINI_APP_SHORTNAME}?startapp={vid_code}"
                         keyboard = [[InlineKeyboardButton("🚀 Unlock full video", url=btn_url)]]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
 
+                        # 1. Also Post to Official Telegram Channel
                         try:
                             if img_url and img_url.startswith("http"):
-                                await app.bot.send_photo(
-                                    chat_id=CHANNEL_USERNAME, 
-                                    photo=img_url, 
-                                    caption=post_text, 
-                                    parse_mode="Markdown", 
-                                    reply_markup=InlineKeyboardMarkup(keyboard)
-                                )
+                                await app.bot.send_photo(chat_id=CHANNEL_USERNAME, photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=reply_markup)
                             else:
-                                await app.bot.send_message(
-                                    chat_id=CHANNEL_USERNAME, 
-                                    text=post_text, 
-                                    parse_mode="Markdown", 
-                                    reply_markup=InlineKeyboardMarkup(keyboard)
-                                )
+                                await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=post_text, parse_mode="Markdown", reply_markup=reply_markup)
+                        except Exception as ch_err:
+                            print(f"Channel post video err: {ch_err}")
 
-                            # Mark as broadcasted in Firestore
-                            patch_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{vid_code}?updateMask.fieldPaths=channelBroadcasted"
-                            requests.patch(patch_url, json={"fields": {"channelBroadcasted": {"booleanValue": True}}})
-                            print(f"✅ Video {vid_code} posted to channel with photo & button!")
-                        except Exception as post_err:
-                            print(f"Channel post video error: {post_err}")
+                        # 2. Broadcast to ALL Users who started the Bot
+                        users_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/users"
+                        res_users = requests.get(users_url)
+                        
+                        if res_users.status_code == 200:
+                            user_docs = res_users.json().get('documents', [])
+                            for u_doc in user_docs:
+                                u_fields = u_doc.get('fields', {})
+                                u_id = u_fields.get('user_id', {}).get('integerValue')
+                                if u_id:
+                                    try:
+                                        if img_url and img_url.startswith("http"):
+                                            await app.bot.send_photo(chat_id=int(u_id), photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=reply_markup)
+                                        else:
+                                            await app.bot.send_message(chat_id=int(u_id), text=post_text, parse_mode="Markdown", reply_markup=reply_markup)
+                                    except Exception:
+                                        pass # Ignore if user blocked bot
+                                    await asyncio.sleep(0.04) # Avoid Telegram rate limits
+
+                        # Mark as broadcasted in Firestore
+                        patch_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{vid_code}?updateMask.fieldPaths=channelBroadcasted"
+                        requests.patch(patch_url, json={"fields": {"channelBroadcasted": {"booleanValue": True}}})
+                        print(f"✅ New Video {vid_code} broadcasted to all users and channel!")
 
             # -------------------------------------------------------------
-            # B. Check Unbroadcasted Approved Payments (Auto-broadcast)
+            # B. Broadcast Successful Payouts to All Bot Users & Channel
             # -------------------------------------------------------------
             payouts_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawals"
             res_p = requests.get(payouts_url)
@@ -277,21 +286,33 @@ async def auto_channel_broadcaster(app: Application):
                             f"🔥 If @{username} can earn this much daily, why are you waiting? Start watching videos and get paid today!"
                         )
                         keyboard = [[InlineKeyboardButton("🚀 Start Earning Now", web_app={"url": MINI_APP_URL})]]
-                        
-                        try:
-                            await app.bot.send_message(
-                                chat_id=CHANNEL_USERNAME, 
-                                text=payout_text, 
-                                parse_mode="Markdown", 
-                                reply_markup=InlineKeyboardMarkup(keyboard)
-                            )
+                        reply_markup = InlineKeyboardMarkup(keyboard)
 
-                            # Mark as broadcasted in Firestore
-                            patch_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawals/{tx_id}?updateMask.fieldPaths=channelBroadcasted"
-                            requests.patch(patch_url, json={"fields": {"channelBroadcasted": {"booleanValue": True}}})
-                            print(f"✅ Payout {tx_id} posted to channel!")
-                        except Exception as payout_err:
-                            print(f"Channel post payout error: {payout_err}")
+                        # 1. Post to Channel
+                        try:
+                            await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=payout_text, parse_mode="Markdown", reply_markup=reply_markup)
+                        except Exception as ch_err:
+                            print(f"Channel post payout err: {ch_err}")
+
+                        # 2. Broadcast to ALL Users
+                        users_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/users"
+                        res_users = requests.get(users_url)
+                        if res_users.status_code == 200:
+                            user_docs = res_users.json().get('documents', [])
+                            for u_doc in user_docs:
+                                u_fields = u_doc.get('fields', {})
+                                u_id = u_fields.get('user_id', {}).get('integerValue')
+                                if u_id:
+                                    try:
+                                        await app.bot.send_message(chat_id=int(u_id), text=payout_text, parse_mode="Markdown", reply_markup=reply_markup)
+                                    except Exception:
+                                        pass
+                                    await asyncio.sleep(0.04)
+
+                        # Mark as broadcasted
+                        patch_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawals/{tx_id}?updateMask.fieldPaths=channelBroadcasted"
+                        requests.patch(patch_url, json={"fields": {"channelBroadcasted": {"booleanValue": True}}})
+                        print(f"✅ Payout {tx_id} broadcasted to all users and channel!")
 
         except Exception as loop_err:
             print("Broadcaster loop error:", loop_err)
@@ -299,7 +320,7 @@ async def auto_channel_broadcaster(app: Application):
         await asyncio.sleep(10) # Checks every 10 seconds
 
 async def post_init(app: Application):
-    asyncio.create_task(auto_channel_broadcaster(app))
+    asyncio.create_task(auto_bot_broadcaster(app))
 
 if __name__ == '__main__':
     threading.Thread(target=run_health_server, daemon=True).start()
