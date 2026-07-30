@@ -7,12 +7,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8981396014:AAHnJKYp1i2sdM-xkHmKzidtQ5IBm3TwakQ"            # আপনার বটের অরিজিনাল টোকেন বসান
-FIREBASE_PROJECT_ID = "xtube-6ea1d"          # ফায়ারবেস প্রজেক্ট আইডি
-BOT_USERNAME = "XTubeearn_bot"              # বটের ইউজারনেম (@ ছাড়া)
-MINI_APP_SHORTNAME = "app"                   # মিনি অ্যাপের short_name (BotFather এ সেট করা)
-CHANNEL_USERNAME = "@XTubeearn_bot"          # আপনার অফিশিয়াল চ্যানেলের ইউজারনেম
-MINI_APP_URL = "https://xtubeearn.blogspot.com" # আপনার মিনি অ্যাপের সাইট লিংক
+BOT_TOKEN = "8981396014:AAGpznHF9Z6tgk92nvh700lT_UxevLkaoD4" # Your original bot token
+FIREBASE_PROJECT_ID = "xtube-6ea1d"          # Firebase Project ID
+BOT_USERNAME = "XTubeearn_bot"              # Bot Username (without @)
+MINI_APP_SHORTNAME = "app"                   # Mini App short_name (configured in BotFather)
+CHANNEL_USERNAME = "@chotigolpobangla25"          # Your official channel username
+MINI_APP_URL = "https://xtubeearn.blogspot.com" # Your Mini App site link
 
 # 1. RENDER HEALTH-CHECK SERVER
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -98,9 +98,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not args:
         process_firestore_referral(user, None)
         welcome_msg = (
-            f"👋 **স্বাগতম {user.first_name}!**\n\n"
-            "🎬 আমাদের মিনি অ্যাপ থেকে প্রতিদিন ভিডিও দেখে এবং টাস্ক পূরণ করে ইনকাম করুন!\n\n"
-            "👇 অ্যাপে প্রবেশ করতে নিচের বাটনে ক্লিক করুন:"
+            f"👋 **Welcome {user.first_name}!**\n\n"
+            "🎬 Earn money daily by watching videos and completing tasks in our Mini App!\n\n"
+            "👇 Click the button below to open the app:"
         )
         keyboard = [[InlineKeyboardButton("🚀 Open XTube Earn App", web_app={"url": MINI_APP_URL})]]
         await context.bot.send_message(
@@ -119,10 +119,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         process_firestore_referral(user, referrer_id)
 
         welcome_msg = (
-            f"👋 **স্বাগতম {user.first_name}!**\n\n"
-            "🎉 আপনি আপনার বন্ধুর রেফারেল লিংকে জয়েন করেছেন!\n"
-            "🎬 মিনি অ্যাপে প্রবেশ করে কাজ শুরু করুন এবং ইনকাম করুন।\n\n"
-            "👇 অ্যাপে প্রবেশ করতে নিচের বাটনে ক্লিক করুন:"
+            f"👋 **Welcome {user.first_name}!**\n\n"
+            "🎉 You joined using your friend's referral link!\n"
+            "🎬 Open the Mini App to start working and earning money.\n\n"
+            "👇 Click the button below to enter the app:"
         )
         keyboard = [[InlineKeyboardButton("🚀 Open XTube Earn App", web_app={"url": MINI_APP_URL})]]
         await context.bot.send_message(
@@ -148,7 +148,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title = fields.get('title', {}).get('stringValue', 'Exclusive Video')
 
             if file_id:
-                # ১. ইনবক্সে ভিডিও সেন্ড করা
+                # 1. Send video to inbox
                 sent_video = await context.bot.send_video(
                     chat_id=chat_id, 
                     video=file_id, 
@@ -156,14 +156,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
 
-                # ২. ৫ মিনিটের টাইমার নোটিশ
+                # 2. 5-minute timer notice
                 sent_msg = await context.bot.send_message(
                     chat_id=chat_id, 
                     text="✅ **Video Unlocked Successfully!**\n\n⚠️ **Note:** This video will automatically delete in **5 minutes** for security reasons.",
                     parse_mode="Markdown"
                 )
 
-                # ৩. ঠিক ৫ মিনিট (৩০০ সেকেন্ড) পর অটো ডিলিট
+                # 3. Auto-delete after 5 minutes (300 seconds)
                 await asyncio.sleep(300)
                 
                 try:
@@ -171,15 +171,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.delete_message(chat_id=chat_id, message_id=sent_msg.message_id)
                     await context.bot.send_message(
                         chat_id=chat_id, 
-                        text="🗑️ ৫ মিনিট পার হয়ে যাওয়ায় নিরাপত্তা স্বার্থে ভিডিওটি অটো-ডিলিট করা হলো।"
+                        text="🗑️ Video automatically deleted after 5 minutes for security reasons."
                     )
                 except Exception as del_err:
                     print(f"Auto-delete failed: {del_err}")
 
             else:
-                await context.bot.send_message(chat_id=chat_id, text="❌ ভিডিও ফাইল আইডি পাওয়া যায়নি।")
+                await context.bot.send_message(chat_id=chat_id, text="❌ Video file ID not found.")
         else:
-            await context.bot.send_message(chat_id=chat_id, text="❌ ভিডিওটি পাওয়া যায়নি।")
+            await context.bot.send_message(chat_id=chat_id, text="❌ Video not found.")
 
     except Exception as e:
         print(f"Error in video unlock command: {e}")
@@ -191,7 +191,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_text = (
             f"📹 **Video File ID Generated:**\n\n"
             f"`{file_id}`\n\n"
-            f"👆 উপর থেকে File ID টি কপি করে এডমিন প্যানেলে পেস্ট করুন!"
+            f"👆 Copy the File ID above and paste it into the admin panel!"
         )
         await update.message.reply_text(text=msg_text, parse_mode="Markdown")
 
@@ -200,7 +200,7 @@ async def auto_channel_broadcaster(app: Application):
     while True:
         try:
             # -------------------------------------------------------------
-            # A. Check Unbroadcasted New Videos (নতুন ভিডিও অটো ব্রডকাস্ট)
+            # A. Check Unbroadcasted New Videos (Auto-broadcast)
             # -------------------------------------------------------------
             vids_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos"
             res_v = requests.get(vids_url)
@@ -251,7 +251,7 @@ async def auto_channel_broadcaster(app: Application):
                             print(f"Channel post video error: {post_err}")
 
             # -------------------------------------------------------------
-            # B. Check Unbroadcasted Approved Payments (সফল পেমেন্ট অটো ব্রডকাস্ট)
+            # B. Check Unbroadcasted Approved Payments (Auto-broadcast)
             # -------------------------------------------------------------
             payouts_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawals"
             res_p = requests.get(payouts_url)
@@ -269,7 +269,7 @@ async def auto_channel_broadcaster(app: Application):
 
                     if status == "Success" and not is_sent:
                         payout_text = (
-                            f"💸 **New Payment Received! (পেমেন্ট প্রুফ)** 💸\n\n"
+                            f"💸 **New Payment Received! (Payment Proof)** 💸\n\n"
                             f"👤 **User:** @{username}\n"
                             f"💰 **Amount:** ₹{amount}\n"
                             f"🏦 **Method:** {method}\n"
@@ -296,7 +296,7 @@ async def auto_channel_broadcaster(app: Application):
         except Exception as loop_err:
             print("Broadcaster loop error:", loop_err)
 
-        await asyncio.sleep(10) # প্রতি ১০ সেকেন্ড পর পর চেক করবে
+        await asyncio.sleep(10) # Checks every 10 seconds
 
 async def post_init(app: Application):
     asyncio.create_task(auto_channel_broadcaster(app))
