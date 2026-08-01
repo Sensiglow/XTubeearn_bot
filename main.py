@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8981396014:AAHiKuBuGB-SeiINl8rxrcaSWOCj5v-ZgmI" # Your original bot token
+BOT_TOKEN = "8981396014:AAHiKuBuGB-SeiINl8rxrcaSWOCj5v-ZgmI:" # Your original bot token
 FIREBASE_PROJECT_ID = "xtube-6ea1d"          # Firebase Project ID
 BOT_USERNAME = "XTubeearn_bot"              # Bot Username (without @)
 MINI_APP_SHORTNAME = "app"                   # Mini App short_name (configured in BotFather)
@@ -112,10 +112,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    param = args[0]
+    param = args[0].strip()
 
     # B. REFERRAL DEEP LINK (e.g. /start 7480551514 or /start ref_7480551514)
-    if param.startswith("ref_") or param.isdigit():
+    if param.startswith("ref_") or (param.isdigit() and not param.startswith("vid_")):
         referrer_id = param.replace("ref_", "")
         process_firestore_referral(user, referrer_id)
 
@@ -134,13 +134,19 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # C. UNLOCKED VIDEO DEEP LINK REQUEST FROM BOT INBOX (e.g. /start vid_101)
-    video_code = param.replace("vid_", "")
+    # C. UNLOCKED VIDEO DEEP LINK REQUEST (e.g. /start vid_101 or /start 101)
+    video_code = param.replace("vid_", "").strip()
+    
+    # Check Firestore for video document
     firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{video_code}"
+    response = requests.get(firestore_url)
+    
+    # Fallback search with raw param if not found
+    if response.status_code != 200:
+        firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{param}"
+        response = requests.get(firestore_url)
 
     try:
-        response = requests.get(firestore_url)
-        
         if response.status_code == 200:
             data = response.json()
             fields = data.get('fields', {})
@@ -178,9 +184,33 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     print(f"Auto-delete failed: {del_err}")
 
             else:
-                await context.bot.send_message(chat_id=chat_id, text="❌ Video file ID not found.")
+                # If fileId not set, open Mini App with this video unlock popup!
+                welcome_msg = (
+                    f"🎬 **{title}**\n\n"
+                    "💸 Watch ads and unlock full video in XTube Earn App!\n\n"
+                    "👇 Click below to open app and unlock:"
+                )
+                keyboard = [[InlineKeyboardButton("🚀 Open App to Unlock Video", web_app={"url": f"{MINI_APP_URL}?startapp=vid_{video_code}"})]]
+                await context.bot.send_message(
+                    chat_id=chat_id, 
+                    text=welcome_msg, 
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
         else:
-            await context.bot.send_message(chat_id=chat_id, text="❌ Video not found.")
+            # General fallback to open App
+            welcome_msg = (
+                f"👋 **Welcome {user.first_name}!**\n\n"
+                "🎬 Earn money daily by watching videos and completing tasks in our Mini App!\n\n"
+                "👇 Click the button below to open the app:"
+            )
+            keyboard = [[InlineKeyboardButton("🚀 Open XTube Earn App", web_app={"url": f"{MINI_APP_URL}?startapp=vid_{video_code}"})]]
+            await context.bot.send_message(
+                chat_id=chat_id, 
+                text=welcome_msg, 
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
     except Exception as e:
         print(f"Error in video unlock command: {e}")
@@ -222,21 +252,25 @@ async def auto_bot_broadcaster(app: Application):
                             f"📌 **Title:** {title}\n\n"
                             f"💸 **Watch the video and earn a lot!**"
                         )
-                        # 🌟 DIRECT MINI APP DIRECT-LINK WITH VIDEO CODE PARAMETER
-                        btn_url = f"https://t.me/{BOT_USERNAME}/{MINI_APP_SHORTNAME}?startapp=vid_{vid_code}"
-                        keyboard = [[InlineKeyboardButton("🚀 Unlock full video", url=btn_url)]]
-                        reply_markup = InlineKeyboardMarkup(keyboard)
-
+                        
                         # 1. Post to Official Telegram Channel
                         try:
+                            channel_btn_url = f"https://t.me/{BOT_USERNAME}/{MINI_APP_SHORTNAME}?startapp=vid_{vid_code}"
+                            channel_keyboard = [[InlineKeyboardButton("🚀 Unlock full video", url=channel_btn_url)]]
+                            channel_markup = InlineKeyboardMarkup(channel_keyboard)
+
                             if img_url and img_url.startswith("http"):
-                                await app.bot.send_photo(chat_id=CHANNEL_USERNAME, photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=reply_markup)
+                                await app.bot.send_photo(chat_id=CHANNEL_USERNAME, photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=channel_markup)
                             else:
-                                await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=post_text, parse_mode="Markdown", reply_markup=reply_markup)
+                                await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=post_text, parse_mode="Markdown", reply_markup=channel_markup)
                         except Exception as ch_err:
                             print(f"Channel post video err: {ch_err}")
 
-                        # 2. Broadcast to ALL Users who started the Bot
+                        # 2. Broadcast to ALL Users with DIRECT WEB_APP BUTTON
+                        user_web_app_url = f"{MINI_APP_URL}?startapp=vid_{vid_code}"
+                        user_keyboard = [[InlineKeyboardButton("🚀 Unlock full video", web_app={"url": user_web_app_url})]]
+                        user_markup = InlineKeyboardMarkup(user_keyboard)
+
                         users_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/users"
                         res_users = requests.get(users_url)
                         
@@ -248,9 +282,9 @@ async def auto_bot_broadcaster(app: Application):
                                 if u_id:
                                     try:
                                         if img_url and img_url.startswith("http"):
-                                            await app.bot.send_photo(chat_id=int(u_id), photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=reply_markup)
+                                            await app.bot.send_photo(chat_id=int(u_id), photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=user_markup)
                                         else:
-                                            await app.bot.send_message(chat_id=int(u_id), text=post_text, parse_mode="Markdown", reply_markup=reply_markup)
+                                            await app.bot.send_message(chat_id=int(u_id), text=post_text, parse_mode="Markdown", reply_markup=user_markup)
                                     except Exception:
                                         pass
                                     await asyncio.sleep(0.04)
