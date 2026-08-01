@@ -134,8 +134,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # C. UNLOCKED VIDEO DEEP LINK REQUEST (e.g. /start vid_101)
-    video_code = param
+    # C. UNLOCKED VIDEO DEEP LINK REQUEST FROM BOT INBOX (e.g. /start vid_101)
+    video_code = param.replace("vid_", "")
     firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{video_code}"
 
     try:
@@ -222,11 +222,12 @@ async def auto_bot_broadcaster(app: Application):
                             f"📌 **Title:** {title}\n\n"
                             f"💸 **Watch the video and earn a lot!**"
                         )
-                        btn_url = f"https://t.me/{BOT_USERNAME}/{MINI_APP_SHORTNAME}?startapp={vid_code}"
+                        # 🌟 DIRECT MINI APP DIRECT-LINK WITH VIDEO CODE PARAMETER
+                        btn_url = f"https://t.me/{BOT_USERNAME}/{MINI_APP_SHORTNAME}?startapp=vid_{vid_code}"
                         keyboard = [[InlineKeyboardButton("🚀 Unlock full video", url=btn_url)]]
                         reply_markup = InlineKeyboardMarkup(keyboard)
 
-                        # 1. Also Post to Official Telegram Channel
+                        # 1. Post to Official Telegram Channel
                         try:
                             if img_url and img_url.startswith("http"):
                                 await app.bot.send_photo(chat_id=CHANNEL_USERNAME, photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=reply_markup)
@@ -251,8 +252,8 @@ async def auto_bot_broadcaster(app: Application):
                                         else:
                                             await app.bot.send_message(chat_id=int(u_id), text=post_text, parse_mode="Markdown", reply_markup=reply_markup)
                                     except Exception:
-                                        pass # Ignore if user blocked bot
-                                    await asyncio.sleep(0.04) # Avoid Telegram rate limits
+                                        pass
+                                    await asyncio.sleep(0.04)
 
                         # Mark as broadcasted in Firestore
                         patch_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{vid_code}?updateMask.fieldPaths=channelBroadcasted"
@@ -317,7 +318,7 @@ async def auto_bot_broadcaster(app: Application):
         except Exception as loop_err:
             print("Broadcaster loop error:", loop_err)
 
-        await asyncio.sleep(10) # Checks every 10 seconds
+        await asyncio.sleep(10)
 
 async def post_init(app: Application):
     asyncio.create_task(auto_bot_broadcaster(app))
