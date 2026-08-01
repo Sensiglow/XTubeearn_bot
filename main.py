@@ -5,6 +5,7 @@ import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.error import Forbidden, BadRequest, TelegramError
 
 # ================= CONFIGURATION =================
 BOT_TOKEN = "8981396014:AAHyU8jm9CY8bdr8dxuKjeMvvTud3ygIF6A" # Your original bot token
@@ -91,62 +92,65 @@ def process_firestore_referral(new_user, referrer_id):
 
 # 2. BOT COMMAND: /start
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_chat or not update.effective_user:
+        return
+
     chat_id = update.effective_chat.id
     user = update.effective_user
     args = context.args
 
-    # A. Normal /start command (No Parameter)
-    if not args:
-        process_firestore_referral(user, None)
-        welcome_msg = (
-            f"👋 **Welcome {user.first_name}!**\n\n"
-            "🎬 Earn money daily by watching videos and completing tasks in our Mini App!\n\n"
-            "👇 Click the button below to open the app:"
-        )
-        keyboard = [[InlineKeyboardButton("🚀 Open XTube Earn App", web_app={"url": MINI_APP_URL})]]
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=welcome_msg, 
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    param = args[0].strip()
-
-    # B. REFERRAL DEEP LINK (e.g. /start 7480551514 or /start ref_7480551514)
-    if param.startswith("ref_") or (param.isdigit() and not param.startswith("vid_")):
-        referrer_id = param.replace("ref_", "")
-        process_firestore_referral(user, referrer_id)
-
-        welcome_msg = (
-            f"👋 **Welcome {user.first_name}!**\n\n"
-            "🎉 You joined using your friend's referral link!\n"
-            "🎬 Open the Mini App to start working and earning money.\n\n"
-            "👇 Click the button below to enter the app:"
-        )
-        keyboard = [[InlineKeyboardButton("🚀 Open XTube Earn App", web_app={"url": MINI_APP_URL})]]
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=welcome_msg, 
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # C. UNLOCKED VIDEO DEEP LINK REQUEST (e.g. /start vid_101 or /start 101)
-    video_code = param.replace("vid_", "").strip()
-    
-    # Check Firestore for video document
-    firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{video_code}"
-    response = requests.get(firestore_url)
-    
-    # Fallback search with raw param if not found
-    if response.status_code != 200:
-        firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{param}"
-        response = requests.get(firestore_url)
-
     try:
+        # A. Normal /start command (No Parameter)
+        if not args:
+            process_firestore_referral(user, None)
+            welcome_msg = (
+                f"👋 **Welcome {user.first_name}!**\n\n"
+                "🎬 Earn money daily by watching videos and completing tasks in our Mini App!\n\n"
+                "👇 Click the button below to open the app:"
+            )
+            keyboard = [[InlineKeyboardButton("🚀 Open XTube Earn App", web_app={"url": MINI_APP_URL})]]
+            await context.bot.send_message(
+                chat_id=chat_id, 
+                text=welcome_msg, 
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+        param = args[0].strip()
+
+        # B. REFERRAL DEEP LINK (e.g. /start 7480551514 or /start ref_7480551514)
+        if param.startswith("ref_") or (param.isdigit() and not param.startswith("vid_")):
+            referrer_id = param.replace("ref_", "")
+            process_firestore_referral(user, referrer_id)
+
+            welcome_msg = (
+                f"👋 **Welcome {user.first_name}!**\n\n"
+                "🎉 You joined using your friend's referral link!\n"
+                "🎬 Open the Mini App to start working and earning money.\n\n"
+                "👇 Click the button below to enter the app:"
+            )
+            keyboard = [[InlineKeyboardButton("🚀 Open XTube Earn App", web_app={"url": MINI_APP_URL})]]
+            await context.bot.send_message(
+                chat_id=chat_id, 
+                text=welcome_msg, 
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+        # C. UNLOCKED VIDEO DEEP LINK REQUEST (e.g. /start vid_101 or /start 101)
+        video_code = param.replace("vid_", "").strip()
+        
+        # Check Firestore for video document
+        firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{video_code}"
+        response = requests.get(firestore_url)
+        
+        # Fallback search with raw param if not found
+        if response.status_code != 200:
+            firestore_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/videos/{param}"
+            response = requests.get(firestore_url)
+
         if response.status_code == 200:
             data = response.json()
             fields = data.get('fields', {})
@@ -212,19 +216,26 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
+    except Forbidden:
+        print(f"⚠️ User {user.id} blocked the bot.")
     except Exception as e:
-        print(f"Error in video unlock command: {e}")
+        print(f"Error in start_command: {e}")
 
 # 3. EASY FILE ID GENERATOR FOR ADMIN
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.video:
-        file_id = update.message.video.file_id
-        msg_text = (
-            f"📹 **Video File ID Generated:**\n\n"
-            f"`{file_id}`\n\n"
-            f"👆 Copy the File ID above and paste it into the admin panel!"
-        )
-        await update.message.reply_text(text=msg_text, parse_mode="Markdown")
+    try:
+        if update.message and update.message.video:
+            file_id = update.message.video.file_id
+            msg_text = (
+                f"📹 **Video File ID Generated:**\n\n"
+                f"`{file_id}`\n\n"
+                f"👆 Copy the File ID above and paste it into the admin panel!"
+            )
+            await update.message.reply_text(text=msg_text, parse_mode="Markdown")
+    except Forbidden:
+        pass
+    except Exception as e:
+        print(f"Error handling video file: {e}")
 
 # 4. INSTANT AUTO-BROADCASTER TO ALL BOT USERS & CHANNEL
 async def auto_bot_broadcaster(app: Application):
@@ -246,7 +257,6 @@ async def auto_bot_broadcaster(app: Application):
                     img_url = fields.get('imgUrl', {}).get('stringValue', fields.get('thumbnailUrl', {}).get('stringValue', ''))
 
                     if not is_sent:
-                        # Prepare post content
                         post_text = (
                             f"🎁 **Dear friends, don't miss the video! / Watch Now!**\n\n"
                             f"📌 **Title:** {title}\n\n"
@@ -285,6 +295,8 @@ async def auto_bot_broadcaster(app: Application):
                                             await app.bot.send_photo(chat_id=int(u_id), photo=img_url, caption=post_text, parse_mode="Markdown", reply_markup=user_markup)
                                         else:
                                             await app.bot.send_message(chat_id=int(u_id), text=post_text, parse_mode="Markdown", reply_markup=user_markup)
+                                    except Forbidden:
+                                        pass # User blocked the bot
                                     except Exception:
                                         pass
                                     await asyncio.sleep(0.04)
@@ -340,6 +352,8 @@ async def auto_bot_broadcaster(app: Application):
                                 if u_id:
                                     try:
                                         await app.bot.send_message(chat_id=int(u_id), text=payout_text, parse_mode="Markdown", reply_markup=reply_markup)
+                                    except Forbidden:
+                                        pass
                                     except Exception:
                                         pass
                                     await asyncio.sleep(0.04)
@@ -354,6 +368,13 @@ async def auto_bot_broadcaster(app: Application):
 
         await asyncio.sleep(10)
 
+# 5. GLOBAL ERROR HANDLER
+async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if isinstance(context.error, Forbidden):
+        print(f"⚠️ Ignored: User blocked the bot.")
+    else:
+        print(f"⚠️ Exception handled: {context.error}")
+
 async def post_init(app: Application):
     asyncio.create_task(auto_bot_broadcaster(app))
 
@@ -362,6 +383,9 @@ if __name__ == '__main__':
 
     print("🤖 XTube Earn Bot is running with Auto-Broadcaster & Referral System...")
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    
+    # Register Error Handler
+    app.add_error_handler(global_error_handler)
     
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.VIDEO, handle_video_file))
