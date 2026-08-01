@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8981396014:AAHiKuBuGB-SeiINl8rxrcaSWOCj5v-ZgmI:" # Your original bot token
+BOT_TOKEN = "8981396014:AAHyU8jm9CY8bdr8dxuKjeMvvTud3ygIF6A" # Your original bot token
 FIREBASE_PROJECT_ID = "xtube-6ea1d"          # Firebase Project ID
 BOT_USERNAME = "XTubeearn_bot"              # Bot Username (without @)
 MINI_APP_SHORTNAME = "app"                   # Mini App short_name (configured in BotFather)
