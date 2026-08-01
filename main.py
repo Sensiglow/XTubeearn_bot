@@ -17,9 +17,13 @@ MINI_APP_URL = "https://xtubeearn.blogspot.com" # Your Mini App site link
 
 # 1. RENDER HEALTH-CHECK SERVER
 class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/plain")
         self.end_headers()
         self.wfile.write(b"XTube Earn Telegram Bot is 100% Active & Healthy!")
 
